@@ -1,52 +1,35 @@
 package ai.sahaj.kafkapubsub.producer;
 
-import com.opencsv.exceptions.*;
-import jakarta.annotation.*;
+import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.databind.*;
+import org.slf4j.*;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.kafka.core.*;
-import org.springframework.kafka.support.*;
 import org.springframework.stereotype.*;
-
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
 
 @Component
 public class RidesPublisher {
 
+  private static final Logger logger = LoggerFactory.getLogger(RidesPublisher.class);
+
+  private final ObjectMapper objectMapper;
+
   public final KafkaTemplate<String, Object> kafkaTemplate;
 
+  @Value(value = "${rides.kafka.topic.name}")
+  private String ridesTopicName;
+
   @Autowired
-  public RidesPublisher(KafkaTemplate<String, Object> kafkaTemplate) {
+  public RidesPublisher(ObjectMapper objectMapper, KafkaTemplate<String, Object> kafkaTemplate) {
+    this.objectMapper = objectMapper;
     this.kafkaTemplate = kafkaTemplate;
   }
 
-  @PostConstruct
-  public void init() throws IOException, CsvException {
-    sendMessage();
-  }
+  public void sendMessage(Ride ride) throws JsonProcessingException {
+    var message = this.objectMapper.writeValueAsString(ride);
 
-  public void sendMessage() throws IOException, CsvException {
-    List<Ride> rides = getRides();
-    rides.forEach(this::sendRideData);
-  }
+    logger.info("Message sent -> {} is sent to Topic {}", message, ridesTopicName);
 
-  private void sendRideData(Ride message) {
-    CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send("lohith-topic",
-      String.valueOf(message.PULocationID), message);
-    future.whenComplete((result, ex) -> {
-      if (ex == null) {
-        System.out.println("Sent message=[" + message +
-          "] with offset=[" + result.getRecordMetadata().offset() + "]");
-      } else {
-        System.out.println("Unable to send message=[" +
-          message + "] due to : " + ex.getMessage());
-      }
-    });
-  }
-
-  private static List<Ride> getRides() throws IOException, CsvException {
-    RidesUtil ridesUtil = new RidesUtil();
-    return ridesUtil.getRides();
+    this.kafkaTemplate.send(ridesTopicName, String.valueOf(ride.PULocationID), message);
   }
 }
